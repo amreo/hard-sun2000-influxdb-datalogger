@@ -1,5 +1,3 @@
-use crate::database::{CommandCode, DbTask};
-use crate::lcdproc::{LcdTask, LcdTaskCommand};
 use chrono::{Local, LocalResult, NaiveDateTime, TimeZone};
 use influxdb::{Client, InfluxDbWriteable, Timestamp, Type};
 use io::ErrorKind;
@@ -8,7 +6,6 @@ use std::fmt;
 use std::io;
 use std::ops::Add;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -923,8 +920,6 @@ pub struct Sun2000 {
     pub poll_ok: u64,
     pub poll_errors: u64,
     pub influxdb_url: Option<String>,
-    pub lcd_transmitter: Sender<LcdTask>,
-    pub db_transmitter: Sender<DbTask>,
     pub mode_change_script: Option<String>,
     pub optimizers: bool,
     pub battery_installed: bool,
@@ -1442,13 +1437,6 @@ impl Sun2000 {
                                 daily_yield_energy.unwrap_or_default() as f64 / 100.0,
                             );
 
-                            //push daily yield to postgres
-                            let task = DbTask {
-                                command: CommandCode::UpdateDailyEnergyYield,
-                                value: {if let Some(x) = daily_yield_energy {Some(x as i32)} else {None}},
-                            };
-                            let _ = self.db_transmitter.send(task);
-
                             if terminated {
                                 break;
                             }
@@ -1467,7 +1455,7 @@ impl Sun2000 {
                             let mut alarm_1: Option<u16> = None;
                             let mut alarm_2: Option<u16> = None;
                             let mut alarm_3: Option<u16> = None;
-                            let mut active_power: Option<i32> = None;
+                            // let mut active_power: Option<i32> = None;
 
                             //obtaining all parameters from inverter
                             let (new_ctx, params) =
@@ -1505,10 +1493,10 @@ impl Sun2000 {
                                         "daily_yield_energy" => daily_yield_energy = n,
                                         _ => {}
                                     },
-                                    ParamKind::NumberI32(n) => match p.name.as_ref() {
-                                        "active_power" => active_power = n,
-                                        _ => {}
-                                    },
+                                    // ParamKind::NumberI32(n) => match p.name.as_ref() {
+                                    //     "active_power" => active_power = n,
+                                    //     _ => {}
+                                    // },
                                     _ => {}
                                 }
                             }
@@ -1539,16 +1527,6 @@ impl Sun2000 {
                                 alarm_2,
                                 alarm_3,
                             );
-
-                            //pass PV info to Lcdproc
-                            let task = LcdTask {
-                                command: LcdTaskCommand::SetLineText,
-                                int_arg: 0,
-                                string_arg: Some(format!("PV {:.1} kWh, {} W",
-                                    daily_yield_energy.unwrap_or_default() as f64 / 100.0,
-                                    active_power.unwrap_or_default(),
-                                ))};
-                            let _ = self.lcd_transmitter.send(task);
 
                             //process obtained parameters
                             debug!("Query complete, dump results:");
