@@ -920,6 +920,7 @@ pub struct Sun2000 {
     pub poll_ok: u64,
     pub poll_errors: u64,
     pub influxdb_url: Option<String>,
+    pub influxdb_token: Option<String>,
     pub mode_change_script: Option<String>,
     pub optimizers: bool,
     pub battery_installed: bool,
@@ -1137,9 +1138,13 @@ impl Sun2000 {
     ) -> io::Result<(Context, Vec<Parameter>)> {
         // connect to influxdb
         let client = match &self.influxdb_url {
-            Some(url) => Some(Client::new(url, "sun2000")),
+            Some(url) => match &self.influxdb_token {
+                Some(token) => Some(Client::new(url, "sun2000").with_token(token)),
+                None => Some(Client::new(url, "sun2000")),
+            },
             None => None,
         };
+
 
         let mut params: Vec<Parameter> = vec![];
         let mut disconnected = false;
