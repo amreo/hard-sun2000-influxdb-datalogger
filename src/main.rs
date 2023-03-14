@@ -108,8 +108,6 @@ async fn main() {
             influxdb_url: influxdb_url.clone(),
             influxdb_token: influxdb_token.clone(),
             mode_change_script: get_config_string("mode_change_script", Some("sun2000")),
-            optimizers: get_config_bool("optimizers", Some("sun2000")),
-            battery_installed: get_config_bool("battery_installed", Some("sun2000")),
             dongle_connection: get_config_bool("dongle_connection", Some("sun2000")),
         };
         let sun2000_future =

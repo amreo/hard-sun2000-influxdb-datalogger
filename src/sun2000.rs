@@ -214,8 +214,6 @@ pub struct Sun2000 {
     pub influxdb_url: Option<String>,
     pub influxdb_token: Option<String>,
     pub mode_change_script: Option<String>,
-    pub optimizers: bool,
-    pub battery_installed: bool,
     pub dongle_connection: bool,
 }
 
@@ -241,6 +239,14 @@ impl Sun2000 {
             Parameter::new("alarm_2", ParamKind::NumberU16(None), None, Some("alarm_bitfield16"), 1, 32009, 1, false, true),
             Parameter::new("alarm_3", ParamKind::NumberU16(None), None, Some("alarm_bitfield16"), 1, 32010, 1, false, true),
             Parameter::new("input_power", ParamKind::NumberI32(None), None, Some("W"), 1, 32064, 2, false, true),
+            Parameter::new_from_string(format!("pv_{:02}_voltage", 1), ParamKind::NumberI16(None), None, Some("V"), 10, 32014 + 2, 1, false, true),
+            Parameter::new_from_string(format!("pv_{:02}_current", 1), ParamKind::NumberI16(None), None, Some("A"), 100, 32015 + 2, 1, false, true),
+            Parameter::new_from_string(format!("pv_{:02}_voltage", 2), ParamKind::NumberI16(None), None, Some("V"), 10, 32014 + 4, 1, false, true),
+            Parameter::new_from_string(format!("pv_{:02}_current", 2), ParamKind::NumberI16(None), None, Some("A"), 100, 32015 + 4, 1, false, true),
+            Parameter::new_from_string(format!("pv_{:02}_voltage", 3), ParamKind::NumberI16(None), None, Some("V"), 10, 32014 + 6, 1, false, true),
+            Parameter::new_from_string(format!("pv_{:02}_current", 3), ParamKind::NumberI16(None), None, Some("A"), 100, 32015 + 6, 1, false, true),
+            Parameter::new_from_string(format!("pv_{:02}_voltage", 4), ParamKind::NumberI16(None), None, Some("V"), 10, 32014 + 8, 1, false, true),
+            Parameter::new_from_string(format!("pv_{:02}_current", 4), ParamKind::NumberI16(None), None, Some("A"), 100, 32015 + 8, 1, false, true),
             Parameter::new("line_voltage_A_B", ParamKind::NumberU16(None), Some("grid_voltage"), Some("V"), 10, 32066, 1, false, true),
             Parameter::new("line_voltage_B_C", ParamKind::NumberU16(None), None, Some("V"), 10, 32067, 1, false, true),
             Parameter::new("line_voltage_C_A", ParamKind::NumberU16(None), None, Some("V"), 10, 32068, 1, false, true),
@@ -358,6 +364,21 @@ impl Sun2000 {
             Parameter::new("unknown_time_5", ParamKind::NumberU32(None), None, Some("epoch"), 1, 40500, 2, false, false),
             Parameter::new("grid_code", ParamKind::NumberU16(None), None, Some("grid_enum"), 1, 42000, 1, false, true),
             Parameter::new("time_zone", ParamKind::NumberI16(None), None, Some("min"), 1, 43006, 1, false, true),
+            Parameter::new("nb_optimizers", ParamKind::NumberU16(None), None, None, 1, 37200, 1, false, false),
+            Parameter::new("nb_online_optimizers", ParamKind::NumberU16(None), None, None, 1, 37201, 1, false, true),
+            Parameter::new("storage_working_mode", ParamKind::NumberI16(None), None, Some("storage_working_mode_enum"), 1, 47004, 1, false, true),
+            Parameter::new("storage_time_of_use_price", ParamKind::NumberI16(None), None, Some("storage_tou_price_enum"), 1, 47027, 1, false, true),
+            Parameter::new("storage_lcoe", ParamKind::NumberU32(None), None, None, 1000, 47069, 2, false, true),
+            Parameter::new("storage_maximum_charging_power", ParamKind::NumberU32(None), None, Some("W"), 1, 47075, 2, false, true),
+            Parameter::new("storage_maximum_discharging_power", ParamKind::NumberU32(None), None, Some("W"), 1, 47077, 2, false, true),
+            Parameter::new("storage_power_limit_grid_tied_point", ParamKind::NumberI32(None), None, Some("W"), 1, 47079, 2, false, true),
+            Parameter::new("storage_charging_cutoff_capacity", ParamKind::NumberU16(None), None, Some("%"), 10, 47081, 1, false, true),
+            Parameter::new("storage_discharging_cutoff_capacity", ParamKind::NumberU16(None), None, Some("%"), 10, 47082, 1, false, true),
+            Parameter::new("storage_forced_charging_and_discharging_period", ParamKind::NumberU16(None), None, Some("min"), 1, 47083, 1, false, true),
+            Parameter::new("storage_forced_charging_and_discharging_power", ParamKind::NumberI32(None), None, Some("min"), 1, 47084, 2, false, true),
+            Parameter::new("storage_working_mode", ParamKind::NumberU16(None), None, Some("working_mode"), 1, 47086, 1, false, true),
+            Parameter::new("storage_current_day_charge_capacity", ParamKind::NumberU32(None), None, Some("kWh"), 100, 37015, 2, false, true),
+            Parameter::new("storage_current_day_discharge_capacity", ParamKind::NumberU32(None), None, Some("kWh"), 100, 37017, 2, false, true),
         ]
     }
 
@@ -663,16 +684,14 @@ impl Sun2000 {
                 Ok(mut ctx) => {
                     info!("<i>{}</>: connected successfully", self.name);
                     //initial parameters table
-                    let mut parameters = Sun2000::param_table();
+                    let parameters = Sun2000::param_table();
                     tokio::time::sleep(Duration::from_secs(2)).await;
 
                     //obtaining all parameters from inverter
                     let (new_ctx, params) = self.read_params(ctx, &parameters, true).await?;
                     ctx = new_ctx;
-                    let mut nb_pv_strings: Option<u16> = None;
                     for p in &params {
                         match &p.value {
-                            ParamKind::NumberU16(n) => if p.name == "nb_pv_strings" { nb_pv_strings = *n }
                             ParamKind::Text(_) => match p.name.as_ref() {
                                 "model_name" => {
                                     info!("<i>{}</>: model name: <b><cyan>{}</>", self.name, &p.get_text_value());
@@ -695,37 +714,6 @@ impl Sun2000 {
                             },
                             _ => {}
                         }
-                    }
-
-                    if let Some(n) = nb_pv_strings {
-                        info!("<i>{}</>: number of available strings: <b><cyan>{}</>", self.name, n);
-                        for i in 1..=n {
-                            parameters.push(Parameter::new_from_string(format!("pv_{:02}_voltage", i), ParamKind::NumberI16(None), None, Some("V"), 10, 32014 + i*2, 1, false, true));
-                            parameters.push(Parameter::new_from_string(format!("pv_{:02}_current", i), ParamKind::NumberI16(None), None, Some("A"), 100, 32015 + i*2, 1, false, true));
-                        }
-                    }
-
-                    if self.optimizers {
-                        info!("<i>{}</>: config: optimizers enabled", self.name);
-                        parameters.push(Parameter::new("nb_optimizers", ParamKind::NumberU16(None), None, None, 1, 37200, 1, false, false));
-                        parameters.push(Parameter::new("nb_online_optimizers", ParamKind::NumberU16(None), None, None, 1, 37201, 1, false, true));
-                    }
-
-                    if self.battery_installed {
-                        info!("<i>{}</>: config: battery installed", self.name);
-                        parameters.push(Parameter::new("storage_working_mode", ParamKind::NumberI16(None), None, Some("storage_working_mode_enum"), 1, 47004, 1, false, true));
-                        parameters.push(Parameter::new("storage_time_of_use_price", ParamKind::NumberI16(None), None, Some("storage_tou_price_enum"), 1, 47027, 1, false, true));
-                        parameters.push(Parameter::new("storage_lcoe", ParamKind::NumberU32(None), None, None, 1000, 47069, 2, false, true));
-                        parameters.push(Parameter::new("storage_maximum_charging_power", ParamKind::NumberU32(None), None, Some("W"), 1, 47075, 2, false, true));
-                        parameters.push(Parameter::new("storage_maximum_discharging_power", ParamKind::NumberU32(None), None, Some("W"), 1, 47077, 2, false, true));
-                        parameters.push(Parameter::new("storage_power_limit_grid_tied_point", ParamKind::NumberI32(None), None, Some("W"), 1, 47079, 2, false, true));
-                        parameters.push(Parameter::new("storage_charging_cutoff_capacity", ParamKind::NumberU16(None), None, Some("%"), 10, 47081, 1, false, true));
-                        parameters.push(Parameter::new("storage_discharging_cutoff_capacity", ParamKind::NumberU16(None), None, Some("%"), 10, 47082, 1, false, true));
-                        parameters.push(Parameter::new("storage_forced_charging_and_discharging_period", ParamKind::NumberU16(None), None, Some("min"), 1, 47083, 1, false, true));
-                        parameters.push(Parameter::new("storage_forced_charging_and_discharging_power", ParamKind::NumberI32(None), None, Some("min"), 1, 47084, 2, false, true));
-                        parameters.push(Parameter::new("storage_working_mode", ParamKind::NumberU16(None), None, Some("working_mode"), 1, 47086, 1, false, true));
-                        parameters.push(Parameter::new("storage_current_day_charge_capacity", ParamKind::NumberU32(None), None, Some("kWh"), 100, 37015, 2, false, true));
-                        parameters.push(Parameter::new("storage_current_day_discharge_capacity", ParamKind::NumberU32(None), None, Some("kWh"), 100, 37017, 2, false, true));
                     }
 
                     // obtain Device Description Definition
