@@ -12,7 +12,7 @@ use humantime::format_duration;
 use std::env;
 use std::fs::OpenOptions;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::task;
 use tokio_compat_02::FutureExt;
@@ -20,7 +20,6 @@ use tokio_compat_02::FutureExt;
 mod sun2000;
 
 fn get_config_string(option_name: &str, section: Option<&str>) -> Option<String> {
-    
     let conf = Ini::load_from_file("hard.conf").expect("Cannot open config file");
     conf.section(Some(section.unwrap_or("general").to_owned()))
         .and_then(|x| x.get(option_name).cloned())
@@ -32,12 +31,7 @@ fn get_config_bool(option_name: &str, section: Option<&str>) -> bool {
         .section(Some(section.unwrap_or("general").to_owned()))
         .and_then(|x| x.get(option_name).cloned());
     match value {
-        Some(val) => match val.trim() {
-            "yes" => true,
-            "true" => true,
-            "1" => true,
-            _ => false,
-        },
+        Some(val) => matches!(val.trim(), "yes" | "true" | "1"),
         _ => false,
     }
 }
@@ -59,22 +53,20 @@ fn logging_init() {
     loggers.push(console_logger);
 
     let mut logfile_error: Option<String> = None;
-    match get_config_string("log", None) {
-        Some(ref log_path) => {
-            let logfile = OpenOptions::new().create(true).append(true).open(log_path);
-            match logfile {
-                Ok(logfile) => {
-                    loggers.push(WriteLogger::new(LevelFilter::Info, conf, logfile));
-                }
-                Err(e) => {
-                    logfile_error = Some(format!(
-                        "Error creating/opening log file: {:?}: {:?}",
-                        log_path, e
-                    ));
-                }
+    
+    if let Some(ref log_path) = get_config_string("log", None) {
+        let logfile = OpenOptions::new().create(true).append(true).open(log_path);
+        match logfile {
+            Ok(logfile) => {
+                loggers.push(WriteLogger::new(LevelFilter::Info, conf, logfile));
+            }
+            Err(e) => {
+                logfile_error = Some(format!(
+                    "Error creating/opening log file: {:?}: {:?}",
+                    log_path, e
+                ));
             }
         }
-        _ => {}
     };
 
     CombinedLogger::init(loggers).expect("Cannot initialize logging subsystem");
@@ -106,26 +98,23 @@ async fn main() {
     let cancel_flag = Arc::new(AtomicBool::new(false));
 
     //sun2000 async task
-    match get_config_string("host", Some("sun2000")) {
-        Some(host) => {
-            let worker_cancel_flag = cancel_flag.clone();
-            let mut sun2000 = sun2000::Sun2000 {
-                name: "sun2000".to_string(),
-                host_port: host,
-                poll_ok: 0,
-                poll_errors: 0,
-                influxdb_url: influxdb_url.clone(),
-                influxdb_token: influxdb_token.clone(),
-                mode_change_script: get_config_string("mode_change_script", Some("sun2000")),
-                optimizers: get_config_bool("optimizers", Some("sun2000")),
-                battery_installed: get_config_bool("battery_installed", Some("sun2000")),
-                dongle_connection: get_config_bool("dongle_connection", Some("sun2000")),
-            };
-            let sun2000_future =
-                task::spawn(async move { sun2000.worker(worker_cancel_flag).compat().await });
-            futures.push(sun2000_future);
-        }
-        _ => {}
+    if let Some(host) = get_config_string("host", Some("sun2000")) {
+        let worker_cancel_flag = cancel_flag.clone();
+        let mut sun2000 = sun2000::Sun2000 {
+            name: "sun2000".to_string(),
+            host_port: host,
+            poll_ok: 0,
+            poll_errors: 0,
+            influxdb_url: influxdb_url.clone(),
+            influxdb_token: influxdb_token.clone(),
+            mode_change_script: get_config_string("mode_change_script", Some("sun2000")),
+            optimizers: get_config_bool("optimizers", Some("sun2000")),
+            battery_installed: get_config_bool("battery_installed", Some("sun2000")),
+            dongle_connection: get_config_bool("dongle_connection", Some("sun2000")),
+        };
+        let sun2000_future =
+            task::spawn(async move { sun2000.worker(worker_cancel_flag).compat().await });
+        futures.push(sun2000_future);
     }
 
     debug!("Entering main loop...");
