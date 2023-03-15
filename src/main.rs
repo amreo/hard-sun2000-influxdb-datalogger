@@ -109,6 +109,7 @@ async fn main() {
             influxdb_url: influxdb_url.clone(),
             influxdb_token: influxdb_token.clone(),
             partial: get_config_bool("partial", Some("sun2000")),
+            bulk_insert: get_config_bool("bulk_insert", Some("sun2000")),
             mode_change_script: get_config_string("mode_change_script", Some("sun2000")),
             dongle_connection: get_config_bool("dongle_connection", Some("sun2000")),
         };
