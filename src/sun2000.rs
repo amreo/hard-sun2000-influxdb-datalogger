@@ -46,7 +46,8 @@ impl fmt::Display for ParamKind {
 pub struct ParameterBlock {
     reg_address: u16,
     len: u16,
-    parameters: Vec<Parameter>
+    parameters: Vec<Parameter>,
+    only_initial_read: bool
 }
 
 impl ParameterBlock {
@@ -55,6 +56,7 @@ impl ParameterBlock {
     ) -> Self {
         //parameters pre-condition that is memory contigue
         let mut end_reg_address = parameters[0].reg_address;
+        let mut only_initial_read = true;
         parameters.iter().for_each(|p| {
             
             if p.reg_address != end_reg_address {
@@ -62,12 +64,14 @@ impl ParameterBlock {
             } else {
                 end_reg_address = p.reg_address + p.len;
             }
+            only_initial_read = only_initial_read && p.initial_read;
         });
 
         Self {
             reg_address: parameters[0].reg_address,
             len: end_reg_address - parameters[0].reg_address,
-            parameters
+            parameters,
+            only_initial_read
         }
     }
    
@@ -271,10 +275,10 @@ impl Sun2000 {
                 Parameter::new("nb_pv_strings", ParamKind::NumberU16(None), 0, None, None, 1, 30071, 1, true, true),
                 Parameter::new("nb_mpp_tracks", ParamKind::NumberU16(None), 0, None, None, 1, 30072, 1, true, true),
                 Parameter::new("rated_power", ParamKind::NumberU32(None), 0, None, Some("W"), 1, 30073, 2, true, true),
-                Parameter::new("P_max", ParamKind::NumberU32(None), 0, None, Some("W"), 1, 30075, 2, false, true),
-                Parameter::new("S_max", ParamKind::NumberU32(None), 0, None, Some("VA"), 1, 30077, 2, false, true),
-                Parameter::new("Q_max_out", ParamKind::NumberI32(None), 0, None, Some("VAr"), 1, 30079, 2, false,true),
-                Parameter::new("Q_max_in", ParamKind::NumberI32(None), 0, None, Some("VAr"), 1, 30081, 2, false, true),
+                Parameter::new("P_max", ParamKind::NumberU32(None), 0, None, Some("W"), 1, 30075, 2, true, true),
+                Parameter::new("S_max", ParamKind::NumberU32(None), 0, None, Some("VA"), 1, 30077, 2, true, true),
+                Parameter::new("Q_max_out", ParamKind::NumberI32(None), 0, None, Some("VAr"), 1, 30079, 2, true,true),
+                Parameter::new("Q_max_in", ParamKind::NumberI32(None), 0, None, Some("VAr"), 1, 30081, 2, true, true),
             ]),
             ParameterBlock::new(vec![
                 Parameter::new("state_1", ParamKind::NumberU16(None), 0, None, Some("state_bitfield16"), 1, 32000, 1, false, true),
@@ -325,11 +329,11 @@ impl Sun2000 {
             ParameterBlock::new(vec![
                 Parameter::new("accumulated_yield_energy", ParamKind::NumberU32(None), 0, None, Some("kWh"), 100, 32106, 2, false, true),
             ]),
+            // ParameterBlock::new(vec![
+            //         Parameter::new("unknown_time_1", ParamKind::NumberU32(None), 0, None, Some("epoch"), 1, 32110, 2, false, false),
+            // ]),
             ParameterBlock::new(vec![
-                    Parameter::new("unknown_time_1", ParamKind::NumberU32(None), 0, None, Some("epoch"), 1, 32110, 2, false, true),
-            ]),
-            ParameterBlock::new(vec![
-                Parameter::new("daily_yield_energy", ParamKind::NumberU32(None), 0, None, Some("kWh"), 100, 32114, 2, true,true),
+                Parameter::new("daily_yield_energy", ParamKind::NumberU32(None), 0, None, Some("kWh"), 100, 32114, 2, false,true),
             ]),
             ParameterBlock::new(vec![
                 Parameter::new("storage1_status", ParamKind::NumberI16(None), 0, None, Some("storage_status_enum"), 1, 37000, 1, false, true),
@@ -352,14 +356,16 @@ impl Sun2000 {
                 Parameter::new("storage1_internal_temperature", ParamKind::NumberI16(None), 0, None, Some("°C"), 10, 37022, 1, false, true),
             ]),
             ParameterBlock::new(vec![            
-                Parameter::new("storage1_remaining_charge_discharge_time", ParamKind::NumberU16(None), 0, None, Some("min"), 1, 37025, 1, false, true),
-                Parameter::new("storage1_dcdc_version", ParamKind::Text(None), 0, None, None, 1, 37026, 10, false, true),
-                Parameter::new("storage1_bms_version", ParamKind::Text(None), 0, None, None, 1, 37036, 10, false, true),
-                Parameter::new("storage1_maximum_charge_power", ParamKind::NumberU32(None), 0, None, Some("W"), 1, 37046, 2, false, true),
-                Parameter::new("storage1_maximum_discharge_power", ParamKind::NumberU32(None), 0, None, Some("W"), 1, 37048, 2, false, true),
+                Parameter::new("storage1_remaining_charge_discharge_time", ParamKind::NumberU16(None), 0, None, Some("min"), 1, 37025, 1, false, true),                
+                // Parameter::new("storage1_dcdc_version", ParamKind::Text(None), 0, None, None, 1, 37026, 10, true, false),
+                // Parameter::new("storage1_bms_version", ParamKind::Text(None), 0, None, None, 1, 37036, 10, true, false),
+            ]),
+            ParameterBlock::new(vec![            
+                Parameter::new("storage1_maximum_charge_power", ParamKind::NumberU32(None), 0, None, Some("W"), 1, 37046, 2, true, true),
+                Parameter::new("storage1_maximum_discharge_power", ParamKind::NumberU32(None), 0, None, Some("W"), 1, 37048, 2, true, true),
             ]),
             ParameterBlock::new(vec![                
-                Parameter::new("storage1_sn", ParamKind::Text(None), 0, None, None, 1, 37052, 10, false, true),
+                Parameter::new("storage1_sn", ParamKind::Text(None), 0, None, None, 1, 37052, 10, true, true),
             ]),
             ParameterBlock::new(vec![                
                 Parameter::new("storage1_total_charge", ParamKind::NumberU32(None), 0, None, Some("kWh"), 100, 37066, 2, false, true),
@@ -380,7 +386,7 @@ impl Sun2000 {
                 Parameter::new("grid_exported_energy", ParamKind::NumberI32(None), 0, None, Some("kWh"), 100, 37119, 2, false, true),
                 Parameter::new("power_meter_reverse_active_power", ParamKind::NumberI32(None), 0, None, Some("kWh"), 100, 37121, 2, false, true),
                 Parameter::new("power_meter_accumulated_reactive_powe", ParamKind::NumberI32(None), 0, None, Some("kVarH"), 100, 37123, 2, false, true),
-                Parameter::new("power_meter_meter_type", ParamKind::NumberU16(None), 0, None, None, 1, 37125, 1, false, true),
+                Parameter::new("power_meter_meter_type", ParamKind::NumberU16(None), 0, None, None, 1, 37125, 1, true, true),
                 Parameter::new("active_grid_A_B_voltage", ParamKind::NumberI32(None), 0, None, Some("V"), 10, 37126, 2, false, true),
                 Parameter::new("active_grid_B_C_voltage", ParamKind::NumberI32(None), 0, None, Some("V"), 10, 37128, 2, false, true),
                 Parameter::new("active_grid_C_A_voltage", ParamKind::NumberI32(None), 0, None, Some("V"), 10, 37130, 2, false, true),
@@ -388,12 +394,12 @@ impl Sun2000 {
                 Parameter::new("active_grid_B_power", ParamKind::NumberI32(None), 0, None, Some("W"), 1, 37134, 2, false, true),
                 Parameter::new("active_grid_C_power", ParamKind::NumberI32(None), 0, None, Some("W"), 1, 37136, 2, false, true),
             ]),
-            ParameterBlock::new(vec![        
-                Parameter::new("nb_optimizers", ParamKind::NumberU16(None), 0, None, None, 1, 37200, 1, false, false),
-                Parameter::new("nb_online_optimizers", ParamKind::NumberU16(None), 0, None, None, 1, 37201, 1, false, true),
-            ]),
+            // ParameterBlock::new(vec![        
+            //     Parameter::new("nb_optimizers", ParamKind::NumberU16(None), 0, None, None, 1, 37200, 1, true, true),
+            //     Parameter::new("nb_online_optimizers", ParamKind::NumberU16(None), 0, None, None, 1, 37201, 1, false, true),
+            // ]),
             ParameterBlock::new(vec![            
-                Parameter::new("storage_rated_capacity", ParamKind::NumberU32(None), 0, None, Some("Wh"), 1, 37758, 2, false, true),
+                Parameter::new("storage_rated_capacity", ParamKind::NumberU32(None), 0, None, Some("Wh"), 1, 37758, 2, true, true),
                 Parameter::new("storage_battery_soc", ParamKind::NumberU16(None), 0, None, Some("%"), 10, 37760, 1, false, true),
             ]),
             ParameterBlock::new(vec![                                
@@ -407,11 +413,11 @@ impl Sun2000 {
                 Parameter::new("storage_current_day_discharge_capacity", ParamKind::NumberU32(None), 0, None, Some("kWh"), 100, 37786,  2, false, true),
             ]),
             ParameterBlock::new(vec![        
-                Parameter::new("storage1_sw_version", ParamKind::Text(None), 0, None, None, 1, 37814, 15, false, true),
+                Parameter::new("storage1_sw_version", ParamKind::Text(None), 0, None, None, 1, 37814, 15, true, true),
             ]),
             ParameterBlock::new(vec![                            
-                Parameter::new("storage1_battery1_sn", ParamKind::Text(None), 0, None, None, 1, 38200, 10, false, true),
-                Parameter::new("storage1_battery1_sw_version", ParamKind::Text(None), 0, None, None, 1, 38210, 15, false, true),
+                Parameter::new("storage1_battery1_sn", ParamKind::Text(None), 0, None, None, 1, 38200, 10, true, true),
+                Parameter::new("storage1_battery1_sw_version", ParamKind::Text(None), 0, None, None, 1, 38210, 15, true, true),
             ]),
             ParameterBlock::new(vec![                                
                 Parameter::new("storage1_battery1_working_status", ParamKind::NumberU16(None), 0, None, Some("storage_status_enum"), 1, 38228, 1, false, true),
@@ -425,8 +431,10 @@ impl Sun2000 {
             ParameterBlock::new(vec![                                    
                 Parameter::new("storage1_battery1_total_charge", ParamKind::NumberU32(None), 0, None, Some("kWh"), 100, 38238, 2, false, true),
                 Parameter::new("storage1_battery1_total_discharge", ParamKind::NumberU32(None), 0, None, Some("kWh"), 100, 38240,  2, false, true),
-                Parameter::new("storage1_battery2_sn", ParamKind::Text(None), 0, None, None, 1, 38242, 10, false, true),
-                Parameter::new("storage1_battery2_sw_version", ParamKind::Text(None), 0, None, None, 1, 38252, 15, false, true),
+            ]),
+            ParameterBlock::new(vec![                                                        
+                Parameter::new("storage1_battery2_sn", ParamKind::Text(None), 0, None, None, 1, 38242, 10, true, true),
+                Parameter::new("storage1_battery2_sw_version", ParamKind::Text(None), 0, None, None, 1, 38252, 15, true, true),
             ]),
             ParameterBlock::new(vec![                                    
                 Parameter::new("storage1_battery2_working_status", ParamKind::NumberU16(None), 0, None, Some("storage_status_enum"), 1, 38270, 1, false, true),
@@ -440,8 +448,10 @@ impl Sun2000 {
             ParameterBlock::new(vec![                                    
                 Parameter::new("storage1_battery2_total_charge", ParamKind::NumberU32(None), 0, None, Some("kWh"), 100, 38280, 2, false, true),
                 Parameter::new("storage1_battery2_total_discharge", ParamKind::NumberU32(None), 0, None, Some("kWh"), 100, 38282,  2, false, true),
-                Parameter::new("storage1_battery3_sn", ParamKind::Text(None), 0, None, None, 1, 38284, 10, false, true),
-                Parameter::new("storage1_battery3_sw_version", ParamKind::Text(None), 0, None, None, 1, 38294, 15, false, true),
+            ]),
+            ParameterBlock::new(vec![                                        
+                Parameter::new("storage1_battery3_sn", ParamKind::Text(None), 0, None, None, 1, 38284, 10, true, true),
+                Parameter::new("storage1_battery3_sw_version", ParamKind::Text(None), 0, None, None, 1, 38294, 15, true, true),
             ]),
             ParameterBlock::new(vec![                                    
                 Parameter::new("storage1_battery3_working_status", ParamKind::NumberU16(None), 0, None, Some("storage_status_enum"), 1, 38312, 1, false, true),
@@ -468,24 +478,26 @@ impl Sun2000 {
                 Parameter::new("system_time", ParamKind::NumberU32(None), 0, None, Some("epoch"), 1, 40000, 2, false, true),
             ]),
             ParameterBlock::new(vec![            
-                Parameter::new("grid_code", ParamKind::NumberU16(None), 0, None, Some("grid_enum"), 1, 42000, 1, false, true),
+                Parameter::new("grid_code", ParamKind::NumberU16(None), 0, None, Some("grid_enum"), 1, 42000, 1, true, true),
             ]),
             ParameterBlock::new(vec![        
-                Parameter::new("time_zone", ParamKind::NumberI16(None), 0, None, Some("min"), 1, 43006, 1, false, true),
+                Parameter::new("time_zone", ParamKind::NumberI16(None), 0, None, Some("min"), 1, 43006, 1, true, true),
             ]),
             ParameterBlock::new(vec![            
                 Parameter::new("storage_working_mode", ParamKind::NumberI16(None), 0, None, Some("storage_working_mode_enum"), 1, 47004, 1, false, true),
             ]),
-            ParameterBlock::new(vec![                                    
-                Parameter::new("storage_time_of_use_price", ParamKind::NumberI16(None), 0, None, Some("storage_tou_price_enum"), 1, 47027, 1, false, true),
-            ]),
-            ParameterBlock::new(vec![            
-                Parameter::new("storage_lcoe", ParamKind::NumberU32(None), 0, None, None, 1000, 47069, 2, false, true),
-            ]),
+            // ParameterBlock::new(vec![                                    
+            //     Parameter::new("storage_time_of_use_price", ParamKind::NumberI16(None), 0, None, Some("storage_tou_price_enum"), 1, 47027, 1, false, true),
+            // ]),
+            // ParameterBlock::new(vec![            
+            //     Parameter::new("storage_lcoe", ParamKind::NumberU32(None), 0, None, None, 1000, 47069, 2, false, false),
+            // ]),
             ParameterBlock::new(vec![        
-                Parameter::new("storage_maximum_charging_power", ParamKind::NumberU32(None), 0, None, Some("W"), 1, 47075, 2, false, true),
-                Parameter::new("storage_maximum_discharging_power", ParamKind::NumberU32(None), 0, None, Some("W"), 1, 47077, 2, false, true),
-                Parameter::new("storage_power_limit_grid_tied_point", ParamKind::NumberI32(None), 0, None, Some("W"), 1, 47079, 2, false, true),
+                Parameter::new("storage_maximum_charging_power", ParamKind::NumberU32(None), 0, None, Some("W"), 1, 47075, 2, true, true),
+                Parameter::new("storage_maximum_discharging_power", ParamKind::NumberU32(None), 0, None, Some("W"), 1, 47077, 2, true, true),
+                Parameter::new("storage_power_limit_grid_tied_point", ParamKind::NumberI32(None), 0, None, Some("W"), 1, 47079, 2, true, true),
+            ]),
+            ParameterBlock::new(vec![                                        
                 Parameter::new("storage_charging_cutoff_capacity", ParamKind::NumberU16(None), 0, None, Some("%"), 10, 47081, 1, false, true),
                 Parameter::new("storage_discharging_cutoff_capacity", ParamKind::NumberU16(None), 0, None, Some("%"), 10, 47082, 1, false, true),
                 Parameter::new("storage_forced_charging_and_discharging_period", ParamKind::NumberU16(None), 0, None, Some("min"), 1, 47083, 1, false, true),
@@ -496,9 +508,9 @@ impl Sun2000 {
                 Parameter::new("active_power_control_mode", ParamKind::NumberU16(None), 0, None, Some("active_power_control_mode_enum"), 1, 47415, 1, false, true),
             ]),
             ParameterBlock::new(vec![            
-                Parameter::new("storage1_battery1_no", ParamKind::NumberU16(None), 0, None, None, 1, 47750, 1, false, true),
-                Parameter::new("storage1_battery2_no", ParamKind::NumberU16(None), 0, None, None, 1, 47751, 1, false, true),
-                Parameter::new("storage1_battery3_no", ParamKind::NumberU16(None), 0, None, None, 1, 47752, 1, false, true),
+                Parameter::new("storage1_battery1_no", ParamKind::NumberU16(None), 0, None, None, 1, 47750, 1, true, true),
+                Parameter::new("storage1_battery2_no", ParamKind::NumberU16(None), 0, None, None, 1, 47751, 1, true, true),
+                Parameter::new("storage1_battery3_no", ParamKind::NumberU16(None), 0, None, None, 1, 47752, 1, true, true),
         ])
         ]
     }
@@ -629,16 +641,14 @@ impl Sun2000 {
         let mut disconnected = false;
         let now = Instant::now();
 
-        for pb in parameters {
+        for pb in parameters.iter().filter(|pb| initial_read || !pb.only_initial_read) {
+            // let pb_start = Instant::now();
+
             if self.partial {
                 for p in pb.parameters.iter().filter(|s| {
                     (initial_read && s.initial_read)
                         || (!initial_read
-                            && (s.save_to_influx
-                                || s.name.starts_with("state_")
-                                || s.name.starts_with("alarm_")
-                                || s.name.ends_with("_status")
-                                || s.name.ends_with("_code")))
+                            && (s.save_to_influx))
                 }) {
                     if disconnected {
                         break;
@@ -822,15 +832,14 @@ impl Sun2000 {
 
                             for p in pb.parameters.iter().filter(|s| {
                                 (initial_read && s.initial_read)
-                                    || (!initial_read
-                                        && (s.save_to_influx
-                                            || s.name.starts_with("state_")
-                                            || s.name.starts_with("alarm_")
-                                            || s.name.ends_with("_status")
-                                            || s.name.ends_with("_code")))
+                                    || (!initial_read)
                             }) {
                                 let data = &remaining_data[0..(p.len as usize)];
                                 remaining_data = &remaining_data[(p.len as usize)..];
+                                if !p.save_to_influx {
+                                    continue;
+                                } 
+
                                 let mut val;
                                 match &p.value {
                                     ParamKind::Text(_) => {
@@ -920,11 +929,21 @@ impl Sun2000 {
                     break;
                 }  
             }
+            
+            // let elapsed = pb_start.elapsed();
+            // let ms = (elapsed.as_secs() * 1_000) + elapsed.subsec_millis() as u64;
+            // info!(
+            //     "{}: read of block {} ({} parameters) [⏱️ {} ms]",
+            //     self.name,
+            //     pb.reg_address,
+            //     pb.parameters.len(),
+            //     ms
+            // );
         }
 
         let elapsed = now.elapsed();
         let ms = (elapsed.as_secs() * 1_000) + elapsed.subsec_millis() as u64;
-        info!(
+        debug!(
             "{}: read {} parameters [⏱️ {} ms]",
             self.name,
             params.len(),
@@ -940,13 +959,13 @@ impl Sun2000 {
             }
         }
         
-        let elapsed2 = now.elapsed();
-        let ms2 = (elapsed2.as_secs() * 1_000) + elapsed2.subsec_millis() as u64;
-        info!(
-            "{}: [⏱️ {} ms]",
-            self.name,
-            ms2,
-        );
+        // let elapsed2 = now.elapsed();
+        // let ms2 = (elapsed2.as_secs() * 1_000) + elapsed2.subsec_millis() as u64;
+        // info!(
+        //     "{}: [⏱️ {} ms]",
+        //     self.name,
+        //     ms2,
+        // );
 
         //save query time
         if let Some(c) = client {
@@ -1127,18 +1146,14 @@ impl Sun2000 {
                                 if let ParamKind::NumberU32(n) = p.value { if p.name == "daily_yield_energy" { daily_yield_energy = n } }
                             }
 
-                            let param_count = parameters.iter().map(|x| x.parameters.iter()).flatten().filter(|s| s.save_to_influx ||
-                                s.name.starts_with("state_") ||
-                                s.name.starts_with("alarm_") ||
-                                s.name.ends_with("_status") ||
-                                s.name.ends_with("_code")).count();
-                            if params.len() != param_count {
-                                error!("<i>{}</>: problem obtaining a complete parameter list (read: {}, expected: {}), reconnecting...", self.name, params.len(), param_count);
-                                self.poll_errors += 1;
-                                break;
-                            } else {
-                                self.poll_ok += 1;
-                            }
+                            // let param_count = parameters.iter().map(|x| x.parameters.iter()).flatten().filter(|s| (s.save_to_influx && !s.initial_read)).count();
+                            // if params.len() != param_count {
+                            //     error!("<i>{}</>: problem obtaining a complete parameter list (read: {}, expected: {}), reconnecting...", self.name, params.len(), param_count);
+                            //     self.poll_errors += 1;
+                            //     break;
+                            // } else {
+                            //     self.poll_ok += 1;
+                            // }
 
                             //process obtained parameters
                             debug!("Query complete, dump results:");
