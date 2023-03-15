@@ -924,7 +924,7 @@ impl Sun2000 {
 
         let elapsed = now.elapsed();
         let ms = (elapsed.as_secs() * 1_000) + elapsed.subsec_millis() as u64;
-        debug!(
+        info!(
             "{}: read {} parameters [⏱️ {} ms]",
             self.name,
             params.len(),
@@ -939,6 +939,14 @@ impl Sun2000 {
                 ).await;
             }
         }
+        
+        let elapsed2 = now.elapsed();
+        let ms2 = (elapsed2.as_secs() * 1_000) + elapsed2.subsec_millis() as u64;
+        info!(
+            "{}: [⏱️ {} ms]",
+            self.name,
+            ms2,
+        );
 
         //save query time
         if let Some(c) = client {
