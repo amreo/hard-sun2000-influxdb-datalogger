@@ -40,6 +40,7 @@ fn logging_init() {
     let conf = ConfigBuilder::new()
         .set_time_format("%F, %H:%M:%S%.3f".to_string())
         .set_write_log_enable_colors(true)
+        // .set_max_level(LevelFilter::Debug)
         .build();
 
     let mut loggers = vec![];
@@ -107,6 +108,7 @@ async fn main() {
             poll_errors: 0,
             influxdb_url: influxdb_url.clone(),
             influxdb_token: influxdb_token.clone(),
+            partial: get_config_bool("partial", Some("sun2000")),
             mode_change_script: get_config_string("mode_change_script", Some("sun2000")),
             dongle_connection: get_config_bool("dongle_connection", Some("sun2000")),
         };
