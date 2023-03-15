@@ -3,6 +3,7 @@ use influxdb::WriteQuery;
 use influxdb::{Client, InfluxDbWriteable, Timestamp, Type};
 use io::ErrorKind;
 use simplelog::*;
+use tokio::sync::mpsc::Sender;
 use std::fmt;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -253,6 +254,7 @@ pub struct Sun2000 {
     pub dongle_connection: bool,
     pub partial: bool,
     pub bulk_insert: bool,
+    pub tx_influxdb: Option<Sender<Vec<WriteQuery>>>,
 }
 
 impl Sun2000 {
@@ -505,22 +507,31 @@ impl Sun2000 {
         client: influxdb::Client,
         thread_name: &String,
         param: Parameter,
+        tx_influxdb: &Option<Sender<Vec<WriteQuery>>>,
     ) -> Result<()> {
         let mut query = Timestamp::Milliseconds(param.time).into_query(&param.name);
         query = query.add_field("value", param.get_influx_value());
 
-        match client.query(&query).await {
-            Ok(msg) => {
-                if msg != "" {
-                    error!("{}: influxdb write success: {:?}", thread_name, msg);
-                } else {
-                    debug!("{}: influxdb write success: {:?}", thread_name, msg);
-                }
-            }
-            Err(e) => {
-                error!("<i>{}</>: influxdb write error: <b>{:?}</>", thread_name, e);
+        match tx_influxdb {
+            Some(tx) => {
+                tx.send(vec![query]).await.unwrap();
+            },
+            None => {
+                match client.query(&query).await {
+                    Ok(msg) => {
+                        if msg != "" {
+                            error!("{}: influxdb write success: {:?}", thread_name, msg);
+                        } else {
+                            debug!("{}: influxdb write success: {:?}", thread_name, msg);
+                        }
+                    }
+                    Err(e) => {
+                        error!("<i>{}</>: influxdb write error: <b>{:?}</>", thread_name, e);
+                    }
+                }        
             }
         }
+
 
         Ok(())
     }
@@ -529,23 +540,32 @@ impl Sun2000 {
         client: influxdb::Client,
         thread_name: &String,
         param: &[&Parameter],
+        tx_influxdb: &Option<Sender<Vec<WriteQuery>>>,
     ) -> Result<()> {
         let query = param.iter().map(|p| 
             Timestamp::Milliseconds(p.time).into_query(&p.name).add_field("value", p.get_influx_value())
         ).collect::<Vec<WriteQuery>>();
 
-        match client.query(&query).await {
-            Ok(msg) => {
-                if msg != "" {
-                    error!("{}: influxdb write success: {:?}", thread_name, msg);
-                } else {
-                    debug!("{}: influxdb write success: {:?}", thread_name, msg);
-                }
-            }
-            Err(e) => {
-                error!("<i>{}</>: influxdb write error: <b>{:?}</>", thread_name, e);
+        match tx_influxdb {
+            Some(tx) => {
+                tx.send(query).await.unwrap();
+            },
+            None => {
+                match client.query(&query).await {
+                    Ok(msg) => {
+                        if msg != "" {
+                            error!("{}: influxdb write success: {:?}", thread_name, msg);
+                        } else {
+                            debug!("{}: influxdb write success: {:?}", thread_name, msg);
+                        }
+                    }
+                    Err(e) => {
+                        error!("<i>{}</>: influxdb write error: <b>{:?}</>", thread_name, e);
+                    }
+                }        
             }
         }
+
 
         Ok(())
     }
@@ -555,6 +575,7 @@ impl Sun2000 {
         thread_name: &String,
         ms: u64,
         param_count: usize,
+        tx_influxdb: &Option<Sender<Vec<WriteQuery>>>,
     ) -> Result<()> {
         let start = SystemTime::now();
         let since_the_epoch = start
@@ -566,16 +587,23 @@ impl Sun2000 {
         query = query.add_field("value", ms);
         query = query.add_field("param_count", param_count as u8);
 
-        match client.query(&query).await {
-            Ok(msg) => {
-                if msg != "" {
-                    error!("{}: influxdb write success: {:?}", thread_name, msg);
-                } else {
-                    debug!("{}: influxdb write success: {:?}", thread_name, msg);
-                }
-            }
-            Err(e) => {
-                error!("<i>{}</>: influxdb write error: <b>{:?}</>", thread_name, e);
+        match tx_influxdb {
+            Some(tx) => {
+                tx.send(vec![query]).await.unwrap();
+            },
+            None => {
+                match client.query(&query).await {
+                    Ok(msg) => {
+                        if msg != "" {
+                            error!("{}: influxdb write success: {:?}", thread_name, msg);
+                        } else {
+                            debug!("{}: influxdb write success: {:?}", thread_name, msg);
+                        }
+                    }
+                    Err(e) => {
+                        error!("<i>{}</>: influxdb write error: <b>{:?}</>", thread_name, e);
+                    }
+                }        
             }
         }
 
@@ -714,7 +742,7 @@ impl Sun2000 {
                                 if !self.bulk_insert {
                                     if let Some(c) = client.clone() {
                                         if !initial_read && p.save_to_influx {
-                                            let _ = Sun2000::save_to_influxdb(c, &self.name, param).await;
+                                            let _ = Sun2000::save_to_influxdb(c, &self.name, param, &self.tx_influxdb).await;
                                         }
                                     }
                                 }
@@ -860,7 +888,7 @@ impl Sun2000 {
                                 if !self.bulk_insert {
                                     if let Some(c) = client.clone() {
                                         if !initial_read && p.save_to_influx {
-                                            let _ = Sun2000::save_to_influxdb(c, &self.name, param).await;
+                                            let _ = Sun2000::save_to_influxdb(c, &self.name, param, &self.tx_influxdb).await;
                                         }
                                     }
                                 }
@@ -906,14 +934,15 @@ impl Sun2000 {
         if self.bulk_insert {
             if let Some(c) = client.clone() {
                 let _ = Sun2000::save_multiple_to_influxdb(c, &self.name, 
-                    &params.iter().filter(|p| !initial_read && p.save_to_influx).collect::<Vec<_>>()[..]
+                    &params.iter().filter(|p| !initial_read && p.save_to_influx).collect::<Vec<_>>()[..], 
+                    &self.tx_influxdb
                 ).await;
             }
         }
 
         //save query time
         if let Some(c) = client {
-            let _ = Sun2000::save_ms_to_influxdb(c, &self.name, ms, params.len()).await;
+            let _ = Sun2000::save_ms_to_influxdb(c, &self.name, ms, params.len(), &self.tx_influxdb).await;
         }
 
         Ok((ctx, params))

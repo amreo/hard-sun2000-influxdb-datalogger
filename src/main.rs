@@ -2,9 +2,12 @@
 
 extern crate ctrlc;
 extern crate simplelog;
+use ::influxdb::WriteQuery;
 use simplelog::*;
+use tokio::sync::mpsc::{self, Sender, Receiver};
 
 extern crate ini;
+
 use self::ini::Ini;
 
 use futures::future::join_all;
@@ -18,6 +21,7 @@ use tokio::task;
 use tokio_compat_02::FutureExt;
 
 mod sun2000;
+mod influxdb;
 
 fn get_config_string(option_name: &str, section: Option<&str>) -> Option<String> {
     let conf = Ini::load_from_file("hard.conf").expect("Cannot open config file");
@@ -35,6 +39,18 @@ fn get_config_bool(option_name: &str, section: Option<&str>) -> bool {
         _ => false,
     }
 }
+
+fn get_config_int(option_name: &str, section: Option<&str>) -> usize {
+    let conf = Ini::load_from_file("hard.conf").expect("Cannot open config file");
+    let value = conf
+        .section(Some(section.unwrap_or("general").to_owned()))
+        .and_then(|x| x.get(option_name).cloned());
+    match value {
+        Some(val) => val.parse().unwrap(),
+        _ => 1,
+    }
+}
+
 
 fn logging_init() {
     let conf = ConfigBuilder::new()
@@ -93,10 +109,31 @@ async fn main() {
     .expect("Error setting Ctrl-C handler");
 
     //common thread stuff
-    let influxdb_url = get_config_string("influxdb_url", None);
-    let influxdb_token = get_config_string("influxdb_token", None);
+    let (tx_influxdb, rx_influxdb);
+    
+    let threaded_influxdb = get_config_bool("threaded_influxdb", Some("influxdb"));
+    let influxdb_url = get_config_string("influxdb_url", Some("influxdb"));
+    let influxdb_token = get_config_string("influxdb_token", Some("influxdb"));
     let mut futures = vec![];
     let cancel_flag = Arc::new(AtomicBool::new(false));
+
+    if threaded_influxdb {
+        let (tx2, rx2): (Sender<Vec<WriteQuery>>, Receiver<Vec<WriteQuery>>) = mpsc::channel(get_config_int("thread_buffer_size", Some("influxdb")));
+        (tx_influxdb,rx_influxdb) = (Some(tx2), Some(rx2));
+
+        let worker_cancel_flag = cancel_flag.clone();
+        let mut influxdb = influxdb::InfluxdbWriter {
+            name: "influxdb".to_string(),
+            influxdb_url: influxdb_url.clone(),
+            influxdb_token: influxdb_token.clone(),
+            rx_influxdb: rx_influxdb.unwrap(),
+        };
+        let influxdb_future =
+            task::spawn(async move { influxdb.worker(worker_cancel_flag).compat().await });
+        futures.push(influxdb_future);
+    } else {
+        tx_influxdb  = None;
+    }
 
     //sun2000 async task
     if let Some(host) = get_config_string("host", Some("sun2000")) {
@@ -112,6 +149,7 @@ async fn main() {
             bulk_insert: get_config_bool("bulk_insert", Some("sun2000")),
             mode_change_script: get_config_string("mode_change_script", Some("sun2000")),
             dongle_connection: get_config_bool("dongle_connection", Some("sun2000")),
+            tx_influxdb,
         };
         let sun2000_future =
             task::spawn(async move { sun2000.worker(worker_cancel_flag).compat().await });
