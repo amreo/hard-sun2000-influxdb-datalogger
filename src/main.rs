@@ -2,9 +2,9 @@
 
 extern crate ctrlc;
 extern crate simplelog;
+use async_channel::{Sender, Receiver};
 use ::influxdb::WriteQuery;
 use simplelog::*;
-use tokio::sync::mpsc::{self, Sender, Receiver};
 
 extern crate ini;
 
@@ -109,7 +109,7 @@ async fn main() {
     .expect("Error setting Ctrl-C handler");
 
     //common thread stuff
-    let (tx_influxdb, rx_influxdb);
+    let tx_influxdb;
     
     let threaded_influxdb = get_config_bool("threaded_influxdb", Some("influxdb"));
     let influxdb_url = get_config_string("influxdb_url", Some("influxdb"));
@@ -118,19 +118,25 @@ async fn main() {
     let cancel_flag = Arc::new(AtomicBool::new(false));
 
     if threaded_influxdb {
-        let (tx2, rx2): (Sender<Vec<WriteQuery>>, Receiver<Vec<WriteQuery>>) = mpsc::channel(get_config_int("thread_buffer_size", Some("influxdb")));
-        (tx_influxdb,rx_influxdb) = (Some(tx2), Some(rx2));
+        // let (tx2, rx2): (Sender<Vec<WriteQuery>>, Receiver<Vec<WriteQuery>>) = mpsc::channel(get_config_int("thread_buffer_size", Some("influxdb")));
+        let (tx2, rx2): (Sender<Vec<WriteQuery>>, Receiver<Vec<WriteQuery>>) = async_channel::bounded(get_config_int("thread_buffer_size", Some("influxdb")));
+        
+        tx_influxdb = Some(tx2);
 
-        let worker_cancel_flag = cancel_flag.clone();
-        let mut influxdb = influxdb::InfluxdbWriter {
-            name: "influxdb".to_string(),
-            influxdb_url: influxdb_url.clone(),
-            influxdb_token: influxdb_token.clone(),
-            rx_influxdb: rx_influxdb.unwrap(),
-        };
-        let influxdb_future =
-            task::spawn(async move { influxdb.worker(worker_cancel_flag).compat().await });
-        futures.push(influxdb_future);
+        let thread_number = get_config_int("thread_number", Some("influxdb"));
+
+        for i in 0..thread_number {
+            let worker_cancel_flag = cancel_flag.clone();
+            let mut influxdb = influxdb::InfluxdbWriter {
+                name: format!("influxdb-{}", i),
+                influxdb_url: influxdb_url.clone(),
+                influxdb_token: influxdb_token.clone(),
+                rx_influxdb: rx2.clone(),
+            };
+            let influxdb_future =
+                task::spawn(async move { influxdb.worker(worker_cancel_flag).compat().await });
+            futures.push(influxdb_future);    
+        }
     } else {
         tx_influxdb  = None;
     }

@@ -1,9 +1,9 @@
+use async_channel::Sender;
 use chrono::{Local, LocalResult, NaiveDateTime, TimeZone};
 use influxdb::WriteQuery;
 use influxdb::{Client, InfluxDbWriteable, Timestamp, Type};
 use io::ErrorKind;
 use simplelog::*;
-use tokio::sync::mpsc::Sender;
 use std::fmt;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};

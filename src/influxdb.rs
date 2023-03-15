@@ -1,8 +1,8 @@
 use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, time::Duration};
 
+use async_channel::Receiver;
 use influxdb::{WriteQuery, Client};
 use simplelog::*;
-use tokio::sync::mpsc::Receiver;
 
 // Just a generic Result type to ease error handling for us. Errors in multithreaded
 // async contexts needs some extra restrictions
@@ -39,7 +39,7 @@ impl InfluxdbWriter {
                 Ok(t) => {
                     debug!(
                         "{}: received vector {:?}",
-                        self.name, t
+                        self.name, t.len()
                     );
 
                     if let Some(c) = client.clone() {
