@@ -5,7 +5,7 @@ use influxdb::{Client, InfluxDbWriteable, Timestamp, Type};
 use io::ErrorKind;
 use simplelog::*;
 use std::fmt;
-use std::io;
+use std::io::{self, Error};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -972,7 +972,11 @@ impl Sun2000 {
             let _ = Sun2000::save_ms_to_influxdb(c, &self.name, ms, params.len(), &self.tx_influxdb).await;
         }
 
-        Ok((ctx, params))
+        if disconnected {
+            Err(Error::from(ErrorKind::ConnectionAborted))
+        } else {
+            Ok((ctx, params))
+        }
     }
 
     pub fn attribute_parser(&self, mut a: Vec<u8>) -> Result<()> {
@@ -1024,7 +1028,7 @@ impl Sun2000 {
         let mut stats_interval = Instant::now();
         let mut terminated = false;
 
-        loop {
+        'mainloop: loop  {
             if terminated || worker_cancel_flag.load(Ordering::SeqCst) {
                 break;
             }
@@ -1058,118 +1062,135 @@ impl Sun2000 {
                     tokio::time::sleep(Duration::from_secs(2)).await;
 
                     //obtaining all parameters from inverter
-                    let (new_ctx, params) = self.read_params(ctx, &parameters, true).await?;
-                    ctx = new_ctx;
-                    for p in &params {
-                        match &p.value {
-                            ParamKind::Text(_) => match p.name.as_ref() {
-                                "model_name" => {
-                                    info!("<i>{}</>: model name: <b><cyan>{}</>", self.name, &p.get_text_value());
-                                }
-                                "serial_number" => {
-                                    info!("<i>{}</>: serial number: <b><cyan>{}</>", self.name, &p.get_text_value());
-                                }
-                                "product_number" => {
-                                    info!("<i>{}</>: product number: <b><cyan>{}</>", self.name, &p.get_text_value());
-                                }
-                                _ => {}
-                            },
-                            ParamKind::NumberU32(_) => if p.name == "rated_power" {
-                                info!(
-                                    "<i>{}</>: rated power: <b><cyan>{} {}</>",
-                                    self.name,
-                                    &p.get_text_value(),
-                                    p.unit.unwrap_or_default()
-                                );
-                            },
-                            _ => {}
-                        }
-                    }
-
-                    // obtain Device Description Definition
-                    use tokio_modbus::prelude::*;
-                    let retval = ctx.call(Request::Custom(0x2b, vec![0x0e, 0x03, 0x87]));
-                    match timeout(Duration::from_secs_f32(5.0), retval).await {
-                        Ok(res) => match res {
-                            Ok(rsp) => match rsp {
-                                Response::Custom(f, rsp) => {
-                                    debug!("<i>{}</>: Result for function {} is '{:?}'", self.name, f, rsp);
-                                    let _ = self.attribute_parser(rsp);
-                                }
-                                _ => {
-                                    error!("<i>{}</>: unexpected Reading Device Identifiers (0x2B) result", self.name);
-                                }
-                            },
-                            Err(e) => {
-                                warn!("<i>{}</i>: read error during <green><i>Reading Device Identifiers (0x2B)</>, error: <b>{}</>", self.name, e);
-                            }
-                        },
-                        Err(e) => {
-                            warn!("<i>{}</i>: read timeout during <green><i>Reading Device Identifiers (0x2B)</>, error: <b>{}</>", self.name, e);
-                        }
-                    }
-
-                    let mut daily_yield_energy: Option<u32> = None;
-                    loop {
-                        if worker_cancel_flag.load(Ordering::SeqCst) {
-                            debug!("<i>{}</>: Got terminate signal from main", self.name);
-                            terminated = true;
-                        }
-
-                        if terminated
-                            || stats_interval.elapsed()
-                                > Duration::from_secs_f32(SUN2000_STATS_DUMP_INTERVAL_SECS)
-                        {
-                            stats_interval = Instant::now();
-                            info!(
-                                "<i>{}</>: 📊 inverter query statistics: ok: <b>{}</>, errors: <b>{}</>, daily energy yield: <b>{:.1} kWh</>",
-                                self.name, self.poll_ok, self.poll_errors,
-                                daily_yield_energy.unwrap_or_default() as f64 / 100.0,
-                            );
-
-                            if terminated {
-                                break;
-                            }
-                        }
-
-                        if poll_interval.elapsed()
-                            > Duration::from_secs_f32(self.poll_interval_sec)
-                        {
-                            poll_interval = Instant::now();
-                            // let mut active_power: Option<i32> = None;
-
-                            //obtaining all parameters from inverter
-                            let (new_ctx, params) =
-                                self.read_params(ctx, &parameters, false).await?;
+                    match self.read_params(ctx, &parameters, true).await {
+                        Ok((new_ctx, params)) => {
                             ctx = new_ctx;
                             for p in &params {
-                                if let ParamKind::NumberU32(n) = p.value { if p.name == "daily_yield_energy" { daily_yield_energy = n } }
+                                match &p.value {
+                                    ParamKind::Text(_) => match p.name.as_ref() {
+                                        "model_name" => {
+                                            info!("<i>{}</>: model name: <b><cyan>{}</>", self.name, &p.get_text_value());
+                                        }
+                                        "serial_number" => {
+                                            info!("<i>{}</>: serial number: <b><cyan>{}</>", self.name, &p.get_text_value());
+                                        }
+                                        "product_number" => {
+                                            info!("<i>{}</>: product number: <b><cyan>{}</>", self.name, &p.get_text_value());
+                                        }
+                                        _ => {}
+                                    },
+                                    ParamKind::NumberU32(_) => if p.name == "rated_power" {
+                                        info!(
+                                            "<i>{}</>: rated power: <b><cyan>{} {}</>",
+                                            self.name,
+                                            &p.get_text_value(),
+                                            p.unit.unwrap_or_default()
+                                        );
+                                    },
+                                    _ => {}
+                                }
                             }
-
-                            // let param_count = parameters.iter().map(|x| x.parameters.iter()).flatten().filter(|s| (s.save_to_influx && !s.initial_read)).count();
-                            // if params.len() != param_count {
-                            //     error!("<i>{}</>: problem obtaining a complete parameter list (read: {}, expected: {}), reconnecting...", self.name, params.len(), param_count);
-                            //     self.poll_errors += 1;
-                            //     break;
-                            // } else {
-                            //     self.poll_ok += 1;
-                            // }
-
-                            //process obtained parameters
-                            debug!("Query complete, dump results:");
-                            for p in &params {
-                                debug!(
-                                    "  {} ({:?}): {} {}",
-                                    p.name,
-                                    p.desc.unwrap_or_default(),
-                                    p.get_text_value(),
-                                    p.unit.unwrap_or_default()
-                                );
+        
+                            // obtain Device Description Definition
+                            use tokio_modbus::prelude::*;
+                            let retval = ctx.call(Request::Custom(0x2b, vec![0x0e, 0x03, 0x87]));
+                            match timeout(Duration::from_secs_f32(5.0), retval).await {
+                                Ok(res) => match res {
+                                    Ok(rsp) => match rsp {
+                                        Response::Custom(f, rsp) => {
+                                            debug!("<i>{}</>: Result for function {} is '{:?}'", self.name, f, rsp);
+                                            let _ = self.attribute_parser(rsp);
+                                        }
+                                        _ => {
+                                            error!("<i>{}</>: unexpected Reading Device Identifiers (0x2B) result", self.name);
+                                        }
+                                    },
+                                    Err(e) => {
+                                        warn!("<i>{}</i>: read error during <green><i>Reading Device Identifiers (0x2B)</>, error: <b>{}</>", self.name, e);
+                                    }
+                                },
+                                Err(e) => {
+                                    warn!("<i>{}</i>: read timeout during <green><i>Reading Device Identifiers (0x2B)</>, error: <b>{}</>", self.name, e);
+                                }
                             }
+        
+                            let mut daily_yield_energy: Option<u32> = None;
+                            loop {
+                                if worker_cancel_flag.load(Ordering::SeqCst) {
+                                    debug!("<i>{}</>: Got terminate signal from main", self.name);
+                                    terminated = true;
+                                }
+        
+                                if terminated
+                                    || stats_interval.elapsed()
+                                        > Duration::from_secs_f32(SUN2000_STATS_DUMP_INTERVAL_SECS)
+                                {
+                                    stats_interval = Instant::now();
+                                    info!(
+                                        "<i>{}</>: 📊 inverter query statistics: ok: <b>{}</>, errors: <b>{}</>, daily energy yield: <b>{:.1} kWh</>",
+                                        self.name, self.poll_ok, self.poll_errors,
+                                        daily_yield_energy.unwrap_or_default() as f64 / 100.0,
+                                    );
+        
+                                    if terminated {
+                                        break;
+                                    }
+                                }
+        
+                                if poll_interval.elapsed()
+                                    > Duration::from_secs_f32(self.poll_interval_sec)
+                                {
+                                    poll_interval = Instant::now();
+                                    // let mut active_power: Option<i32> = None;
+        
+                                    
+                                    //obtaining all parameters from inverter
+                                    match self.read_params(ctx, &parameters, false).await {
+                                        Ok((new_ctx, params)) => {
+                                            ctx = new_ctx;
+                                            for p in &params {
+                                                if let ParamKind::NumberU32(n) = p.value { if p.name == "daily_yield_energy" { daily_yield_energy = n } }
+                                            }
+                
+                                            // let param_count = parameters.iter().map(|x| x.parameters.iter()).flatten().filter(|s| (s.save_to_influx && !s.initial_read)).count();
+                                            // if params.len() != param_count {
+                                            //     error!("<i>{}</>: problem obtaining a complete parameter list (read: {}, expected: {}), reconnecting...", self.name, params.len(), param_count);
+                                            //     self.poll_errors += 1;
+                                            //     break;
+                                            // } else {
+                                            //     self.poll_ok += 1;
+                                            // }
+                
+                                            //process obtained parameters
+                                            debug!("Query complete, dump results:");
+                                            for p in &params {
+                                                debug!(
+                                                    "  {} ({:?}): {} {}",
+                                                    p.name,
+                                                    p.desc.unwrap_or_default(),
+                                                    p.get_text_value(),
+                                                    p.unit.unwrap_or_default()
+                                                );
+                                            }
+                                        }, 
+                                        Err(err) => {
+                                            error!("<i>{}</>: error: <b>{}</>", self.name, err);
+                                            tokio::time::sleep(Duration::from_secs(2)).await;                
+                                            continue 'mainloop;
+                                        }
+                                    }
+                                }
+        
+                                tokio::time::sleep(Duration::from_millis(30)).await;
+                            }  
+                        },
+                        Err(err) => {
+                            error!("<i>{}</>: error: <b>{}</>", self.name, err);
+                            tokio::time::sleep(Duration::from_secs(2)).await;                
+                            continue;
                         }
-
-                        tokio::time::sleep(Duration::from_millis(30)).await;
-                    }
+                    };
+                    
                 }
                 Err(e) => {
                     error!("<i>{}</>: connection error: <b>{}</>", self.name, e);
