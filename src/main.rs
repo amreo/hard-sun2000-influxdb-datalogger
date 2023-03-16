@@ -51,6 +51,17 @@ fn get_config_int(option_name: &str, section: Option<&str>) -> usize {
     }
 }
 
+fn get_config_float32(option_name: &str, section: Option<&str>) -> f32 {
+    let conf = Ini::load_from_file("hard.conf").expect("Cannot open config file");
+    let value = conf
+        .section(Some(section.unwrap_or("general").to_owned()))
+        .and_then(|x| x.get(option_name).cloned());
+    match value {
+        Some(val) => val.parse().unwrap(),
+        _ => 0.0,
+    }
+}
+
 
 fn logging_init() {
     let conf = ConfigBuilder::new()
@@ -156,6 +167,7 @@ async fn main() {
             mode_change_script: get_config_string("mode_change_script", Some("sun2000")),
             dongle_connection: get_config_bool("dongle_connection", Some("sun2000")),
             tx_influxdb,
+            poll_interval_sec: get_config_float32("poll_interval", Some("sun2000")),
         };
         let sun2000_future =
             task::spawn(async move { sun2000.worker(worker_cancel_flag).compat().await });

@@ -14,7 +14,6 @@ use tokio::time::timeout;
 use tokio_modbus::client::Context;
 use tokio_modbus::prelude::*;
 
-pub const SUN2000_POLL_INTERVAL_SECS: f32 = 2.0; //secs between polling
 pub const SUN2000_STATS_DUMP_INTERVAL_SECS: f32 = 3600.0; //secs between showing stats
 pub const SUN2000_ATTEMPTS_PER_PARAM: u8 = 3; //max read attempts per single parameter
 
@@ -259,6 +258,7 @@ pub struct Sun2000 {
     pub partial: bool,
     pub bulk_insert: bool,
     pub tx_influxdb: Option<Sender<Vec<WriteQuery>>>,
+    pub poll_interval_sec: f32,
 }
 
 impl Sun2000 {
@@ -1133,7 +1133,7 @@ impl Sun2000 {
                         }
 
                         if poll_interval.elapsed()
-                            > Duration::from_secs_f32(SUN2000_POLL_INTERVAL_SECS)
+                            > Duration::from_secs_f32(self.poll_interval_sec)
                         {
                             poll_interval = Instant::now();
                             // let mut active_power: Option<i32> = None;
