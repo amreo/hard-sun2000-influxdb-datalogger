@@ -531,7 +531,7 @@ impl Sun2000 {
             None => {
                 match client.query(&query).await {
                     Ok(msg) => {
-                        if msg != "" {
+                        if !msg.is_empty() {
                             error!("{}: influxdb write success: {:?}", thread_name, msg);
                         } else {
                             debug!("{}: influxdb write success: {:?}", thread_name, msg);
@@ -565,7 +565,7 @@ impl Sun2000 {
             None => {
                 match client.query(&query).await {
                     Ok(msg) => {
-                        if msg != "" {
+                        if !msg.is_empty() {
                             error!("{}: influxdb write success: {:?}", thread_name, msg);
                         } else {
                             debug!("{}: influxdb write success: {:?}", thread_name, msg);
@@ -606,7 +606,7 @@ impl Sun2000 {
             None => {
                 match client.query(&query).await {
                     Ok(msg) => {
-                        if msg != "" {
+                        if !msg.is_empty() {
                             error!("{}: influxdb write success: {:?}", thread_name, msg);
                         } else {
                             debug!("{}: influxdb write success: {:?}", thread_name, msg);
@@ -831,8 +831,7 @@ impl Sun2000 {
                             }
 
                             for p in pb.parameters.iter().filter(|s| {
-                                (initial_read && s.initial_read)
-                                    || (!initial_read)
+                                !initial_read || s.initial_read
                             }) {
                                 let data = &remaining_data[0..(p.len as usize)];
                                 remaining_data = &remaining_data[(p.len as usize)..];

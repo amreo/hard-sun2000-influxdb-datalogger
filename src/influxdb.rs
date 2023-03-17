@@ -35,18 +35,15 @@ impl InfluxdbWriter {
             };    
 
             let task = self.rx_influxdb.try_recv();
-            match task {
-                Ok(t) => {
-                    debug!(
-                        "{}: received vector {:?}",
-                        self.name, t.len()
-                    );
+            if let Ok(t) = task {
+                debug!(
+                    "{}: received vector {:?}",
+                    self.name, t.len()
+                );
 
-                    if let Some(c) = client.clone() {
-                        let _ = save_multiple_to_influxdb(c, &self.name, t).await;
-                    }
-                },
-                _ => (),
+                if let Some(c) = client.clone() {
+                    let _ = save_multiple_to_influxdb(c, &self.name, t).await;
+                }
             }
 
             tokio::time::sleep(Duration::from_millis(30)).await;
@@ -64,7 +61,7 @@ async fn save_multiple_to_influxdb(
 ) -> Result<()> {
     match client.query(query).await {
         Ok(msg) => {
-            if msg != "" {
+            if !msg.is_empty() {
                 error!("{}: influxdb write success: {:?}", thread_name, msg);
             } else {
                 debug!("{}: influxdb write success: {:?}", thread_name, msg);
