@@ -596,7 +596,7 @@ impl Sun2000 {
             .as_millis();
 
         let mut query = Timestamp::Milliseconds(since_the_epoch).into_query("inverter_query_time");
-        query = query.add_field("value", ms);
+        query = query.add_field("value", Type::SignedInteger(ms as i64));
         query = query.add_field("param_count", param_count as u8);
 
         match tx_influxdb {
