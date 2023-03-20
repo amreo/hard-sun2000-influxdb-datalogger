@@ -348,8 +348,8 @@ impl Sun2000 {
             ]),
             ParameterBlock::new(vec![    
                 Parameter::new("storage1_fault_id", ParamKind::NumberU16(None), 0, None, None, 1, 37014, 1, false, true),
-                Parameter::new("storage_current_day_charge_capacity", ParamKind::NumberU32(None), 0, None, Some("kWh"), 100, 37015, 2, false, true),
-                Parameter::new("storage_current_day_discharge_capacity", ParamKind::NumberU32(None), 0, None, Some("kWh"), 100, 37017, 2, false, true),
+                Parameter::new("storage1_current_day_charge_capacity", ParamKind::NumberU32(None), 0, None, Some("kWh"), 100, 37015, 2, false, true),
+                Parameter::new("storage1_current_day_discharge_capacity", ParamKind::NumberU32(None), 0, None, Some("kWh"), 100, 37017, 2, false, true),
             ]),
             ParameterBlock::new(vec![        
                 Parameter::new("storage1_bus_current", ParamKind::NumberI16(None), 0, None, Some("A"), 10, 37021, 1, false, true),
