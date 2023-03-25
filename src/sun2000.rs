@@ -259,6 +259,8 @@ pub struct Sun2000 {
     pub bulk_insert: bool,
     pub tx_influxdb: Option<Sender<Vec<WriteQuery>>>,
     pub poll_interval_sec: f32,
+    pub reconnect_params_threshold: usize,
+    pub reconnect_params_wait: f32,
 }
 
 impl Sun2000 {
@@ -1150,8 +1152,15 @@ impl Sun2000 {
                                             for p in &params {
                                                 if let ParamKind::NumberU32(n) = p.value { if p.name == "daily_yield_energy" { daily_yield_energy = n } }
                                             }
-                
+                                            
+
                                             // let param_count = parameters.iter().map(|x| x.parameters.iter()).flatten().filter(|s| (s.save_to_influx && !s.initial_read)).count();
+                                            if params.len() <= self.reconnect_params_threshold {
+                                                error!("<i>{}</>: reconnection because the number of obtained parameters is too low ({})", self.name, params.len());
+
+                                                tokio::time::sleep(Duration::from_secs_f32(self.reconnect_params_wait)).await;                
+                                                continue 'mainloop;    
+                                            }
                                             // if params.len() != param_count {
                                             //     error!("<i>{}</>: problem obtaining a complete parameter list (read: {}, expected: {}), reconnecting...", self.name, params.len(), param_count);
                                             //     self.poll_errors += 1;

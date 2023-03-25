@@ -168,6 +168,8 @@ async fn main() {
             dongle_connection: get_config_bool("dongle_connection", Some("sun2000")),
             tx_influxdb,
             poll_interval_sec: get_config_float32("poll_interval", Some("sun2000")),
+            reconnect_params_threshold: get_config_int("reconnect_params_threshold", Some("sun2000")),
+            reconnect_params_wait: get_config_float32("reconnect_params_wait", Some("sun2000")),
         };
         let sun2000_future =
             task::spawn(async move { sun2000.worker(worker_cancel_flag).compat().await });
