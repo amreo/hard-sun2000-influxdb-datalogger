@@ -681,6 +681,7 @@ impl Sun2000 {
                                 );
                                 if attempts == SUN2000_ATTEMPTS_PER_PARAM {
                                     error!("{}", msg);
+                                    disconnected = true;
                                     break;
                                 } else {
                                     warn!("{}", msg);
@@ -775,6 +776,7 @@ impl Sun2000 {
                                     _ => {
                                         if attempts == SUN2000_ATTEMPTS_PER_PARAM {
                                             error!("{}", msg);
+                                            disconnected = true;
                                             break;
                                         } else {
                                             warn!("{}", msg);
@@ -815,6 +817,7 @@ impl Sun2000 {
                             );
                             if attempts == SUN2000_ATTEMPTS_PER_PARAM {
                                 error!("{}", msg);
+                                disconnected = true;
                                 break;
                             } else {
                                 warn!("{}", msg);
@@ -918,6 +921,7 @@ impl Sun2000 {
                                 _ => {
                                     if attempts == SUN2000_ATTEMPTS_PER_PARAM {
                                         error!("{}", msg);
+                                        disconnected = true;
                                         break;
                                     } else {
                                         warn!("{}", msg);
